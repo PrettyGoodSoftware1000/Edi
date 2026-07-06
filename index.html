@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --edw-red:#B0142E;        /* Edwards brand red */
+    --edw-red-dark:#8E1025;
+    --titanium:#77736F;       /* Edwards titanium gray (PMS 403) */
+    --ink:#2B2926;
+    --paper:#FFFFFF;
+    --mist:#F5F4F2;
+    --line:#E4E1DE;
+    --placeholder:#BBB7B2;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+    background:var(--mist);
+    color:var(--ink);
+    display:flex;flex-direction:column;align-items:center;
+  }
+  header{
+    width:100%;
+    background:var(--paper);
+    border-bottom:1px solid var(--line);
+    padding:28px 20px 22px;
+    text-align:center;
+  }
+  header h1{
+    font-size:clamp(24px,4vw,34px);
+    font-weight:700;
+    letter-spacing:-0.01em;
+  }
+  header h1 .edi{color:var(--edw-red)}
+  header p{
+    color:var(--titanium);
+    font-size:15px;
+    margin-top:4px;
+  }
+  .pulse{display:block;margin:10px auto 0;width:220px;height:26px}
+  .pulse path{
+    fill:none;stroke:var(--edw-red);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+    stroke-dasharray:400;stroke-dashoffset:400;
+    animation:trace 2.2s ease-out forwards;
+  }
+  @keyframes trace{to{stroke-dashoffset:0}}
+  @media (prefers-reduced-motion:reduce){.pulse path{animation:none;stroke-dashoffset:0}}
+
+  main{
+    width:100%;max-width:720px;flex:1;
+    display:flex;flex-direction:column;
+    padding:20px 16px 0;
+  }
+  #chat{
+    flex:1;overflow-y:auto;
+    display:flex;flex-direction:column;gap:12px;
+    padding-bottom:16px;
+  }
+  .msg{
+    max-width:82%;
+    padding:12px 16px;
+    border-radius:14px;
+    line-height:1.45;
+    white-space:pre-wrap;
+    font-size:16px;
+  }
+  .msg.user{
+    align-self:flex-end;
+    background:var(--edw-red);color:#fff;
+    border-bottom-right-radius:4px;
+  }
+  .msg.edi{
+    align-self:flex-start;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-bottom-left-radius:4px;
+  }
+  .tag{
+    align-self:flex-start;
+    font-size:12px;color:var(--titanium);
+    margin:-6px 0 0 6px;
+  }
+  .chips{
+    align-self:flex-start;
+    display:flex;flex-wrap:wrap;gap:8px;
+    margin-left:2px;
+  }
+  .chips button{
+    font:inherit;font-size:14px;font-weight:600;
+    color:var(--edw-red);
+    background:var(--paper);
+    border:1.5px solid var(--edw-red);
+    border-radius:999px;
+    padding:7px 16px;cursor:pointer;
+    transition:background .15s,color .15s;
+  }
+  .chips button:hover,.chips button:focus-visible{
+    background:var(--edw-red);color:#fff;outline:none;
+  }
+  .thinking{
+    align-self:flex-start;display:flex;gap:5px;
+    padding:14px 18px;background:var(--paper);
+    border:1px solid var(--line);border-radius:14px;border-bottom-left-radius:4px;
+  }
+  .thinking span{
+    width:7px;height:7px;border-radius:50%;
+    background:var(--edw-red);opacity:.35;
+    animation:beat 1s infinite;
+  }
+  .thinking span:nth-child(2){animation-delay:.18s}
+  .thinking span:nth-child(3){animation-delay:.36s}
+  @keyframes beat{0%,100%{opacity:.35;transform:scale(1)}50%{opacity:1;transform:scale(1.25)}}
+
+  form{
+    width:100%;max-width:720px;
+    display:flex;gap:10px;
+    padding:14px 16px calc(18px + env(safe-area-inset-bottom));
+    position:sticky;bottom:0;
+    background:linear-gradient(transparent,var(--mist) 30%);
+  }
+  #input{
+    flex:1;
+    font:inherit;font-size:16px;
+    padding:13px 18px;
+    border:1px solid var(--line);
+    border-radius:999px;
+    background:var(--paper);
+    color:var(--ink);
+  }
+  #input.hint{color:var(--placeholder)}
+  #input:focus{outline:none;border-color:var(--edw-red)}
+  form button{
+    font:inherit;font-weight:700;font-size:15px;
+    background:var(--edw-red);color:#fff;
+    border:none;border-radius:999px;
+    padding:0 24px;cursor:pointer;
+  }
+  form button:hover{background:var(--edw-red-dark)}
+  form button:focus-visible{outline:2px solid var(--edw-red-dark);outline-offset:2px}
+
+  /* ---- Load-spreadsheet overlay ---- */
+  #loader{
+    position:fixed;inset:0;z-index:20;
+    background:rgba(43,41,38,.45);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;
+  }
+  #loader .card{
+    background:var(--paper);
+    border-radius:16px;
+    padding:32px 30px;
+    max-width:440px;width:100%;
+    text-align:center;
+    box-shadow:0 18px 50px rgba(0,0,0,.25);
+  }
+  #loader h2{font-size:20px;margin-bottom:8px}
+  #loader p{color:var(--titanium);font-size:14px;line-height:1.5;margin-bottom:20px}
+  #loader label{
+    display:inline-block;
+    font-weight:700;color:#fff;
+    background:var(--edw-red);
+    border-radius:999px;
+    padding:12px 28px;cursor:pointer;
+  }
+  #loader label:hover{background:var(--edw-red-dark)}
+  #loader input[type=file]{display:none}
+  #loadError{color:var(--edw-red);font-size:13px;margin-top:14px;min-height:1em}
+
+  /* ---- API key panel (Ctrl + `) ---- */
+  #keyPanel{
+    position:fixed;top:0;left:0;right:0;z-index:30;
+    background:var(--ink);color:#fff;
+    padding:16px 20px;
+    display:none;
+    flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;
+    box-shadow:0 6px 20px rgba(0,0,0,.3);
+  }
+  #keyPanel.open{display:flex}
+  #keyPanel strong{font-size:14px;width:100%;text-align:center;font-weight:600}
+  #keyPanel strong em{color:#D0CCC7;font-style:normal;font-weight:400}
+  #keyPanel input{
+    font:inherit;font-size:13px;
+    width:240px;max-width:90vw;
+    padding:8px 12px;
+    border-radius:8px;border:1px solid #55524E;
+    background:#3A3835;color:#fff;
+  }
+  #keyPanel input::placeholder{color:#8D8983}
+  #keyPanel .saved{font-size:12px;color:#9FE0A8;width:100%;text-align:center;min-height:1em}
+</style>
+</head>
+<body>
+
+<div id="keyPanel" role="dialog" aria-label="API keys">
+  <strong>Gemini API keys <em>— saved in this browser only · press Ctrl + ` to close</em></strong>
+  <input type="password" id="key1" placeholder="API key 1 (primary)" autocomplete="off">
+  <input type="password" id="key2" placeholder="API key 2 (backup)" autocomplete="off">
+  <input type="password" id="key3" placeholder="API key 3 (backup)" autocomplete="off">
+  <div class="saved" id="keySaved"></div>
+</div>
+
+<div id="loader">
+  <div class="card">
+    <h2>Load Edi's playbook</h2>
+    <p>Choose the .xlsx that defines Edi's answers.<br>
+    Column A: user phrasings · Column B: response<br>
+    Column C: follow-up options · Column D: option replies<br><br>
+    The file is read entirely in your browser — it is never uploaded.</p>
+    <label>Choose spreadsheet<input type="file" id="file" accept=".xlsx,.xls"></label>
+    <div id="loadError"></div>
+  </div>
+</div>
+
+<header>
+  <h1>Welcome to <span class="edi">Edi</span></h1>
+  <p>Your on-demand assistant</p>
+  <svg class="pulse" viewBox="0 0 220 26" aria-hidden="true">
+    <path d="M0 13 H70 L82 13 L90 4 L100 22 L108 8 L114 13 H220"/>
+  </svg>
+</header>
+
+<main>
+  <div id="chat" aria-live="polite"></div>
+</main>
+
+<form id="form" autocomplete="off">
+  <input id="input" type="text" aria-label="Message Edi">
+  <button type="submit">Send</button>
+</form>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const MODEL = "gemini-2.5-flash-lite"; // free-tier friendly
+const KEYS_STORAGE = "edi_api_keys";
+const HINT_TEXT = "What can you do for me, Edi?";
+
+const DEFAULT_OPTION_REPLY = (label) => `Great choice \u2014 ${label} it is!`;
+const NO_MATCH_REPLY = "I'm not sure I can help with that yet \u2014 it's outside my playbook.";
+const API_DOWN_REPLY = "I couldn't reach my language service (no working API key). Press Ctrl + ` to add keys, or use an exact phrase from my playbook.";
+
+/* ============================================================
+   API KEYS — stored in localStorage, edited via Ctrl + `
+   ============================================================ */
+const keyPanel = document.getElementById("keyPanel");
+const keyInputs = [1,2,3].map(n => document.getElementById("key"+n));
+const keySaved = document.getElementById("keySaved");
+
+function loadKeys(){
+  try { return JSON.parse(localStorage.getItem(KEYS_STORAGE)) || ["","",""]; }
+  catch { return ["","",""]; }
+}
+function saveKeys(){
+  localStorage.setItem(KEYS_STORAGE, JSON.stringify(keyInputs.map(i => i.value.trim())));
+  keySaved.textContent = "Saved \u2713";
+  clearTimeout(saveKeys._t);
+  saveKeys._t = setTimeout(() => keySaved.textContent = "", 1500);
+}
+loadKeys().forEach((v,i) => keyInputs[i].value = v);
+keyInputs.forEach(i => i.addEventListener("input", saveKeys));
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey && e.key === "`") {
+    e.preventDefault();
+    keyPanel.classList.toggle("open");
+    if (keyPanel.classList.contains("open")) keyInputs[0].focus();
+  }
+});
+
+function activeKeys(){
+  return loadKeys().filter(k => k && k.trim());
+}
+
+/* ============================================================
+   SPREADSHEET LOADING
+   Column A = phrasings (many per intent)
+   Column B = response (starts a new intent; merged cells fine —
+              the value only appears in the top row of a merge)
+   Column C = follow-up options
+   Column D = per-option reply (optional)
+   ============================================================ */
+let INTENTS = [];
+
+async function parseWorkbook(file){
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf);
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+
+  const intents = [];
+  let cur = null;
+  for (let i = 1; i < rows.length; i++) { // skip header row
+    const a = String(rows[i][0] ?? "").trim();
+    const b = String(rows[i][1] ?? "").trim();
+    const c = String(rows[i][2] ?? "").trim();
+    const d = String(rows[i][3] ?? "").trim();
+    if (b) {
+      cur = { id: "intent_" + (intents.length + 1), patterns: [], response: b, options: [] };
+      intents.push(cur);
+    }
+    if (!cur) continue;
+    if (a) cur.patterns.push(a);
+    if (c) cur.options.push({ label: c, response: d });
+  }
+  intents.forEach(it => {
+    if (!it.options.length) it.options = null;
+    it.norm = it.patterns.map(normalize);
+  });
+  return intents.filter(it => it.patterns.length);
+}
+
+document.getElementById("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const err = document.getElementById("loadError");
+  err.textContent = "";
+  try {
+    INTENTS = await parseWorkbook(file);
+    if (!INTENTS.length) { err.textContent = "No usable rows found \u2014 check that columns A and B have data."; return; }
+    document.getElementById("loader").remove();
+    const withOptions = INTENTS.filter(i => i.options).length;
+    addMsg(`Hi! I'm Edi. I've loaded ${INTENTS.length} topic${INTENTS.length === 1 ? "" : "s"} from "${file.name}"${withOptions ? ` (${withOptions} with follow-up options)` : ""}. Ask away.`, "edi");
+    input.focus();
+  } catch (ex) {
+    console.error(ex);
+    err.textContent = "Couldn't read that file. Is it a valid .xlsx?";
+  }
+});
+
+/* ============================================================
+   MATCHING
+   ============================================================ */
+const normalize = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+
+let pendingIntent = null;
+
+function exactIntentMatch(text) {
+  const n = normalize(text);
+  return INTENTS.find(it => it.norm.includes(n)) || null;
+}
+function exactOptionMatch(text, intent) {
+  const n = normalize(text);
+  return intent.options.find(o => normalize(o.label) === n) || null;
+}
+
+/* ============================================================
+   GEMINI FALLBACK (with key rotation)
+   Privacy note: only the user's message, the column-A example
+   phrasings, and any pending column-C option labels are sent.
+   Column B / D response text never leaves the browser.
+   ============================================================ */
+async function callGemini(prompt) {
+  const keys = activeKeys();
+  if (!keys.length) return { noKeys: true };
+  let lastErr = null;
+  for (const key of keys) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0, responseMimeType: "application/json" }
+          })
+        }
+      );
+      if (!res.ok) { lastErr = new Error(`Key \u2026${key.slice(-4)}: HTTP ${res.status}`); continue; }
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) { lastErr = new Error("Empty response"); continue; }
+      return JSON.parse(text);
+    } catch (e) { lastErr = e; }
+  }
+  console.warn("All Gemini keys failed:", lastErr);
+  return null;
+}
+
+function buildClassifierPrompt(userText) {
+  const intentList = INTENTS.map(it =>
+    `- id "${it.id}": example phrasings: ${it.patterns.map(p => `"${p}"`).join(", ")}`
+  ).join("\n");
+
+  let optionBlock = "";
+  if (pendingIntent) {
+    optionBlock = `\nThe assistant just asked the user a multiple-choice question. Valid answers (options): ${pendingIntent.options.map(o => `"${o.label}"`).join(", ")}\nIf the user's message is choosing one of these options (even loosely), return {"type":"option","value":"<exact option label>"}.\nIf they changed the subject, classify against the intents instead.`;
+  }
+
+  return `You are an intent classifier for a demo chatbot. Respond ONLY with minified JSON, no markdown.
+
+Known intents:
+${intentList}
+${optionBlock}
+
+User message: "${userText}"
+
+Rules:
+- If the message matches an intent's meaning, return {"type":"intent","value":"<intent id>"}.
+- ${pendingIntent ? 'Prefer "option" if it plausibly answers the pending question.' : ""}
+- If nothing fits, return {"type":"none"}.`;
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+const chat = document.getElementById("chat");
+const form = document.getElementById("form");
+const input = document.getElementById("input");
+
+// Pre-populated light-colored text that clears on focus
+input.value = HINT_TEXT;
+input.classList.add("hint");
+input.addEventListener("focus", () => {
+  if (input.classList.contains("hint")) { input.value = ""; input.classList.remove("hint"); }
+});
+input.addEventListener("blur", () => {
+  if (!input.value.trim()) { input.value = HINT_TEXT; input.classList.add("hint"); }
+});
+
+function addMsg(text, who) {
+  const d = document.createElement("div");
+  d.className = `msg ${who}`;
+  d.textContent = text;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  return d;
+}
+function addTag(text) {
+  const t = document.createElement("div");
+  t.className = "tag";
+  t.textContent = text;
+  chat.appendChild(t);
+}
+function addChips(intent) {
+  const wrap = document.createElement("div");
+  wrap.className = "chips";
+  intent.options.forEach(o => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = o.label;
+    b.addEventListener("click", () => handleUserText(o.label));
+    wrap.appendChild(b);
+  });
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+}
+function showThinking() {
+  const d = document.createElement("div");
+  d.className = "thinking";
+  d.innerHTML = "<span></span><span></span><span></span>";
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  return d;
+}
+
+function serveIntent(intent, viaAI) {
+  addMsg(intent.response, "edi");
+  if (viaAI) addTag("matched by AI");
+  if (intent.options) {
+    pendingIntent = intent;
+    addChips(intent);
+  } else {
+    pendingIntent = null;
+  }
+}
+function serveOption(option, viaAI) {
+  addMsg(option.response?.trim() ? option.response : DEFAULT_OPTION_REPLY(option.label), "edi");
+  if (viaAI) addTag("matched by AI");
+  pendingIntent = null;
+}
+
+async function handleUserText(text) {
+  if (!text.trim() || !INTENTS.length) return;
+  addMsg(text, "user");
+  input.value = "";
+  input.classList.remove("hint");
+
+  if (pendingIntent) {
+    const opt = exactOptionMatch(text, pendingIntent);
+    if (opt) { serveOption(opt, false); return; }
+  }
+
+  const exact = exactIntentMatch(text);
+  if (exact) { serveIntent(exact, false); return; }
+
+  const spinner = showThinking();
+  const result = await callGemini(buildClassifierPrompt(text));
+  spinner.remove();
+
+  if (!result || result.noKeys) { addMsg(API_DOWN_REPLY, "edi"); pendingIntent = null; return; }
+
+  if (result.type === "option" && pendingIntent) {
+    const opt = pendingIntent.options.find(o => normalize(o.label) === normalize(result.value || ""));
+    if (opt) { serveOption(opt, true); return; }
+  }
+  if (result.type === "intent") {
+    const it = INTENTS.find(i => i.id === result.value);
+    if (it) { serveIntent(it, true); return; }
+  }
+  addMsg(NO_MATCH_REPLY, "edi");
+}
+
+form.addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (input.classList.contains("hint")) return;
+  handleUserText(input.value);
+});
+</script>
+</body>
+</html>
