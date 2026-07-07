@@ -23,7 +23,7 @@
         "coffee",
         "Give me free coffee"
       ],
-      "response": "What kind of complementary coffee would you like? \nHouse Blend \nIced coffee\nAmericano\nCappuccino",
+      "response": "What kind of complementary coffee would you like? \nHouse Blend \nIced coffee\nAmericano\nCappuccino \nI'll have whatever David Miller is having",
       "options": [
         {
           "label": "House Blend",
@@ -36,8 +36,30 @@
         {
           "label": "Americano",
           "response": ""
+        },
+        {
+          "label": "Cappuccino",
+          "response": ""
+        },
+        {
+          "label": "Miller",
+          "response": ""
+        },
+        {
+          "label": "Nevermind",
+          "response": ""
         }
       ]
+    },
+    {
+      "id": "intent_3",
+      "patterns": [
+        "What can you do for me, Edi?",
+        "What can you do?",
+        "What do you do?"
+      ],
+      "response": "A bunch of stuff that Mark isn't typing right now. Bite me.",
+      "options": null
     }
   ]
 }
