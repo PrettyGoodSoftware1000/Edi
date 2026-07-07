@@ -136,7 +136,7 @@
 
 <div id="dev" role="dialog" aria-label="Developer menu">
   <div class="panel">
-    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.2</span></div>
+    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.3</span></div>
     <div class="lock" id="lockView">
       <label for="pw">Password</label>
       <input type="password" id="pw" autocomplete="off" placeholder="Enter password">
@@ -183,7 +183,7 @@ const MODEL = "gemini-2.5-flash-lite";
 const DEV_PASSWORD = "cheeseburger";
 const KEYS_STORAGE = "edi_api_keys";
 const HINT_TEXT = "What can you do for me, Edi?";
-const VERSION = "murmur v2.2";
+const VERSION = "murmur v2.3";
 
 /* Built-in fallbacks used only if Sheet 2 is missing or a value is blank */
 const DEFAULT_RESP = {
@@ -216,10 +216,12 @@ async function parseWorkbook(file){
 function parseIntents(ws){
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
   const clean = s => String(s ?? "").replace(/\r\n/g, "\n").trim();
+  const lastCol = XLSX.utils.decode_range(ws["!ref"] || "A1").e.c; // 0-indexed last column
 
   // Merged cells only store their value in the top-left cell; every other
-  // row in the merge reads back empty. Fill each merged range with its
-  // anchor value so columns B/C/D behave the way they LOOK in Excel.
+  // row reads back empty. Fill each merged range with its anchor value so
+  // every column behaves the way it LOOKS in Excel (this covers the output
+  // columns B, D, F, H … which are often merged across an option group).
   const bContinuation = new Set(); // rows that are merge continuations in column B
   (ws["!merges"] || []).forEach(m => {
     const val = (rows[m.s.r] || [])[m.s.c] ?? "";
@@ -230,20 +232,39 @@ function parseIntents(ws){
     if (m.s.c === 1) for (let r = m.s.r + 1; r <= m.e.r; r++) bContinuation.add(r);
   });
 
+  // Column pattern, repeating indefinitely:
+  //   A(0) typed phrasings → B(1) response
+  //   C(2) options         → D(3) reply     ← level 0
+  //   E(4) options         → F(5) reply     ← level 1
+  //   G(6) options         → H(7) reply     ← level 2  … and so on.
+  // Even columns (2,4,6…) are option inputs; the odd column to their right
+  // is that option's reply. Each option group becomes one "level"; after the
+  // user answers a level, the next non-empty level's options are offered.
   const intents = []; let cur = null;
   for (let i = 1; i < rows.length; i++) { // skip header row
-    const a = clean(rows[i][0]), b = clean(rows[i][1]), c = clean(rows[i][2]), d = clean(rows[i][3]);
-    // A value in B starts a new topic — unless this row is just the
-    // continuation of a merged B cell from the topic above.
+    const a = clean(rows[i][0]), b = clean(rows[i][1]);
     if (b && !bContinuation.has(i)) {
-      cur = { id: "intent_" + (intents.length + 1), patterns: [], response: b, options: [] };
+      cur = { id: "intent_" + (intents.length + 1), patterns: [], response: b, levelsByCol: {} };
       intents.push(cur);
     }
     if (!cur) continue;
     if (a) cur.patterns.push(a);
-    if (c) cur.options.push({ label: c, response: d });
+    for (let c = 2; c <= lastCol; c += 2) {          // every option-input column
+      const label = clean(rows[i][c]);
+      if (!label) continue;
+      const reply = clean(rows[i][c + 1] ?? "");     // paired reply column
+      (cur.levelsByCol[c] ||= []).push({ label, reply });
+    }
   }
-  intents.forEach(it => { if (!it.options.length) it.options = null; it.norm = it.patterns.map(normalize); });
+
+  intents.forEach(it => {
+    // Compact the per-column groups (in column order) into a level list, so a
+    // topic with options in C and G but not E still chains C → G cleanly.
+    it.levels = Object.keys(it.levelsByCol).map(Number).sort((x, y) => x - y)
+                      .map(c => it.levelsByCol[c]);
+    delete it.levelsByCol;
+    it.norm = it.patterns.map(normalize);
+  });
   return intents.filter(it => it.patterns.length);
 }
 
@@ -379,8 +400,8 @@ function buildPrompt(userText) {
   const intentList = INTENTS.map(it =>
     `- id "${it.id}": example phrasings: ${it.patterns.map(p => `"${p}"`).join(", ")}`).join("\n");
   let optionBlock = "";
-  if (pendingIntent) {
-    optionBlock = `\nThe assistant just asked a multiple-choice question. Options: ${pendingIntent.options.map(o => `"${o.label}"`).join(", ")}\nIf the user is choosing one (even loosely), return {"type":"option","value":"<exact option label>"}. If they changed subject, classify against intents.`;
+  if (pending) {
+    optionBlock = `\nThe assistant just asked a multiple-choice question. Options: ${pending.options.map(o => `"${o.label}"`).join(", ")}\nIf the user is choosing one (even loosely), return {"type":"option","value":"<exact option label>"}. If they changed subject, classify against intents.`;
   }
   return `You are an intent classifier. Respond ONLY with minified JSON, no markdown.
 
@@ -392,14 +413,15 @@ User message: "${userText}"
 
 Rules:
 - If it matches an intent's meaning, return {"type":"intent","value":"<intent id>"}.
-- ${pendingIntent ? 'Prefer "option" if it plausibly answers the pending question.' : ""}
+- ${pending ? 'Prefer "option" if it plausibly answers the pending question.' : ""}
 - If nothing fits, return {"type":"none"}.`;
 }
 
 /* ===================== MATCHING ===================== */
-let pendingIntent = null;
+// pending = { intent, levelIndex, options } — the option group currently on screen.
+let pending = null;
 function exactIntentMatch(text){ const n = normalize(text); return INTENTS.find(it => it.norm.includes(n)) || null; }
-function exactOptionMatch(text, intent){ const n = normalize(text); return intent.options.find(o => normalize(o.label) === n) || null; }
+function optionInList(text, options){ const n = normalize(text); return options.find(o => normalize(o.label) === n) || null; }
 
 /* ===================== CHAT UI ===================== */
 const chat = document.getElementById("chat");
@@ -414,27 +436,43 @@ function addMsg(text, who){
   const d = document.createElement("div"); d.className = "msg " + who; d.textContent = text;
   chat.appendChild(d); chat.scrollTop = chat.scrollHeight; return d;
 }
-function addChips(intent){
+function offerOptions(intent, levelIndex){
+  const options = intent.levels[levelIndex];
   const wrap = document.createElement("div"); wrap.className = "chips";
-  intent.options.forEach(o => {
+  options.forEach(o => {
     const b = document.createElement("button"); b.type = "button"; b.textContent = o.label;
-    b.addEventListener("click", () => handleUserText(o.label));
+    // The button remembers exactly which option it is, so clicking an OLD
+    // chip from earlier in the chat still resolves correctly and moves on —
+    // it never falls through to the "no match" path.
+    b.addEventListener("click", () => chooseOption(intent, levelIndex, o));
     wrap.appendChild(b);
   });
   chat.appendChild(wrap); chat.scrollTop = chat.scrollHeight;
+  pending = { intent, levelIndex, options };
 }
 function showThinking(){
   const d = document.createElement("div"); d.className = "thinking";
   d.innerHTML = "<span></span><span></span><span></span>";
   chat.appendChild(d); chat.scrollTop = chat.scrollHeight; return d;
 }
-function serveIntent(intent){
+
+// Show a topic's response, then offer its first option group (if any).
+function serveTopic(intent){
   addMsg(intent.response, "edi");
-  if (intent.options) { pendingIntent = intent; addChips(intent); } else pendingIntent = null;
+  pending = null;
+  if (intent.levels.length) offerOptions(intent, 0);
 }
-function serveOption(option){
-  const reply = option.response?.trim() ? option.response : RESP.DEFAULT_OPTION.replace("{label}", option.label);
-  addMsg(reply, "edi"); pendingIntent = null;
+// Resolve a chosen option: echo it, show its reply, then advance to the next
+// option group in the SAME topic (if one exists). Works for current or old chips.
+// echo=false when the user's message was already shown (typed / AI-matched).
+function chooseOption(intent, levelIndex, option, echo = true){
+  if (echo) addMsg(option.label, "user");
+  const reply = option.reply?.trim() ? option.reply : RESP.DEFAULT_OPTION.replace("{label}", option.label);
+  addMsg(reply, "edi");
+  pending = null;
+  const next = levelIndex + 1;
+  if (intent.levels[next]) offerOptions(intent, next);
+  input.focus();
 }
 
 async function handleUserText(text){
@@ -442,8 +480,10 @@ async function handleUserText(text){
   addMsg(text, "user");
   input.value = ""; input.classList.remove("hint");
 
-  if (pendingIntent) { const opt = exactOptionMatch(text, pendingIntent); if (opt) { serveOption(opt); return; } }
-  const exact = exactIntentMatch(text); if (exact) { serveIntent(exact); return; }
+  // Typed answer that matches the current on-screen options
+  if (pending) { const opt = optionInList(text, pending.options); if (opt) { chooseOption(pending.intent, pending.levelIndex, opt, false); return; } }
+  // Typed a top-level phrasing → jump to that topic
+  const exact = exactIntentMatch(text); if (exact) { serveTopic(exact); return; }
 
   const spinner = showThinking();
   const result = await callGemini(buildPrompt(text));
@@ -451,13 +491,13 @@ async function handleUserText(text){
 
   // No keys configured = exact-match-only mode: unknown input just gets the
   // normal "no match" reply. API_DOWN is reserved for keys that exist but fail.
-  if (result?.noKeys) { addMsg(RESP.NO_MATCH, "edi"); pendingIntent = null; return; }
-  if (!result) { addMsg(RESP.API_DOWN, "edi"); pendingIntent = null; return; }
-  if (result.type === "option" && pendingIntent) {
-    const opt = pendingIntent.options.find(o => normalize(o.label) === normalize(result.value || ""));
-    if (opt) { serveOption(opt); return; }
+  if (result?.noKeys) { addMsg(RESP.NO_MATCH, "edi"); return; }
+  if (!result) { addMsg(RESP.API_DOWN, "edi"); return; }
+  if (result.type === "option" && pending) {
+    const opt = optionInList(result.value || "", pending.options);
+    if (opt) { chooseOption(pending.intent, pending.levelIndex, opt, false); return; }
   }
-  if (result.type === "intent") { const it = INTENTS.find(i => i.id === result.value); if (it) { serveIntent(it); return; } }
+  if (result.type === "intent") { const it = INTENTS.find(i => i.id === result.value); if (it) { serveTopic(it); return; } }
   addMsg(RESP.NO_MATCH, "edi");
 }
 
