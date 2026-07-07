@@ -1,0 +1,13 @@
+# Edi — response text
+# Edit the words to the RIGHT of each "=" sign.
+# Keep the LABEL on the left (GREETING, NO_MATCH, etc.) exactly as-is.
+# Lines starting with "#" are notes and are ignored.
+# {label} is replaced with whatever option the user picked.
+
+GREETING = Hi, I'm Edi. What can I help you with?
+
+NO_MATCH = I'm not sure I can help with that one.
+
+API_DOWN = I'm having trouble answering right now. Please try again in a moment.
+
+DEFAULT_OPTION = Great choice — {label} it is!

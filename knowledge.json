@@ -1,0 +1,43 @@
+{
+  "generatedFrom": "ExampleNoConfidentialInfo.xlsx",
+  "intents": [
+    {
+      "id": "intent_1",
+      "patterns": [
+        "Summarize the research",
+        "tell me about the research",
+        "show me research",
+        "Reseach"
+      ],
+      "response": "Here's a summary of the research.\n [a bunch of research text goes here]",
+      "options": null
+    },
+    {
+      "id": "intent_2",
+      "patterns": [
+        "Order me a coffee",
+        "I want coffee",
+        "Coffee please",
+        "Got coffee?",
+        "Is the coffee free?",
+        "coffee",
+        "Give me free coffee"
+      ],
+      "response": "What kind of complementary coffee would you like? \nHouse Blend \nIced coffee\nAmericano\nCappuccino",
+      "options": [
+        {
+          "label": "House Blend",
+          "response": ""
+        },
+        {
+          "label": "Iced coffee",
+          "response": ""
+        },
+        {
+          "label": "Americano",
+          "response": ""
+        }
+      ]
+    }
+  ]
+}
