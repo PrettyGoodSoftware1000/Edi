@@ -7,6 +7,7 @@
         "Summarize the research",
         "tell me about the research",
         "show me research",
+        "valves",
         "Reseach"
       ],
       "response": "Here's a summary of the research.\n [a bunch of research text goes here]",
@@ -21,13 +22,16 @@
         "Got coffee?",
         "Is the coffee free?",
         "coffee",
-        "Give me free coffee"
+        "Give me free coffee",
+        "What can you do for me, Edi?",
+        "What can you do?",
+        "Details"
       ],
-      "response": "What kind of complementary coffee would you like? \nHouse Blend \nIced coffee\nAmericano\nCappuccino \nI'll have whatever David Miller is having",
+      "response": "What kind of coffee would you like?",
       "options": [
         {
           "label": "House Blend",
-          "response": ""
+          "response": "Ok, head over to the Ed_____'s booth in 5 minutes."
         },
         {
           "label": "Iced coffee",
@@ -42,7 +46,7 @@
           "response": ""
         },
         {
-          "label": "Miller",
+          "label": "I'll have whatever David Miller is having",
           "response": ""
         },
         {
@@ -50,16 +54,6 @@
           "response": ""
         }
       ]
-    },
-    {
-      "id": "intent_3",
-      "patterns": [
-        "What can you do for me, Edi?",
-        "What can you do?",
-        "What do you do?"
-      ],
-      "response": "A bunch of stuff that Mark isn't typing right now. Bite me.",
-      "options": null
     }
   ]
 }
