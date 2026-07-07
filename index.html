@@ -136,7 +136,7 @@
 
 <div id="dev" role="dialog" aria-label="Developer menu">
   <div class="panel">
-    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.1</span></div>
+    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.2</span></div>
     <div class="lock" id="lockView">
       <label for="pw">Password</label>
       <input type="password" id="pw" autocomplete="off" placeholder="Enter password">
@@ -147,7 +147,7 @@
       <input type="password" id="k1" autocomplete="off" placeholder="API key 1 (primary)">
       <input type="password" id="k2" autocomplete="off" placeholder="API key 2 (backup)">
       <input type="password" id="k3" autocomplete="off" placeholder="API key 3 (backup)">
-      <p class="hintline">Saved in this browser. Press ~ to close.</p>
+      <p class="hintline">Optional override — keys in the spreadsheet take priority. Saved in this browser. Press ~ to close.</p>
     </div>
     <div class="msg-line" id="devMsg"></div>
   </div>
@@ -183,43 +183,37 @@ const MODEL = "gemini-2.5-flash-lite";
 const DEV_PASSWORD = "cheeseburger";
 const KEYS_STORAGE = "edi_api_keys";
 const HINT_TEXT = "What can you do for me, Edi?";
-const VERSION = "murmur v2.1";
+const VERSION = "murmur v2.2";
 
-/* Built-in fallbacks used only if responses.txt can't be read */
-let RESP = {
+/* Built-in fallbacks used only if Sheet 2 is missing or a value is blank */
+const DEFAULT_RESP = {
   GREETING: "Hi, I'm Edi. What can I help you with?",
   NO_MATCH: "I'm not sure I can help with that one.",
   API_DOWN: "I'm having trouble answering right now. Please try again in a moment.",
   DEFAULT_OPTION: "Great choice — {label} it is!"
 };
+let RESP = { ...DEFAULT_RESP };
+let SHEET_KEYS = ["", "", ""]; // API keys read from Sheet 2
 let INTENTS = [];
 
 /* ===================== NORMALIZE ===================== */
 const normalize = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
 
-/* ===================== RESPONSES (silent load) ===================== */
-async function loadResponses(){
-  try {
-    const txt = await (await fetch("responses.txt", { cache: "no-store" })).text();
-    txt.split(/\r?\n/).forEach(line => {
-      const t = line.trim();
-      if (!t || t.startsWith("#")) return;
-      const eq = t.indexOf("=");
-      if (eq === -1) return;
-      const key = t.slice(0, eq).trim();
-      const val = t.slice(eq + 1).trim();
-      if (key in RESP) RESP[key] = val;
-    });
-  } catch (e) { console.warn("responses.txt not loaded, using defaults:", e); }
-}
-
 /* ===================== SPREADSHEET LOADING ===================== */
-/* Column A = phrasings · Column B = response (a value starts a new topic;
-   merged cells fine — value appears only in the top row) ·
-   Column C = follow-up options · Column D = per-option reply (optional) */
+/* Sheet 1 — the playbook:
+     Column A = phrasings · Column B = response (a value starts a new topic;
+     merged cells fine) · Column C = follow-up options · Column D = per-option reply.
+   Sheet 2 — settings (optional):
+     Column A = setting name (GREETING, NO_MATCH, API_DOWN, DEFAULT_OPTION,
+     API_KEY_1/2/3) · Column B = value. Anything else is ignored. */
 async function parseWorkbook(file){
   const wb = XLSX.read(await file.arrayBuffer());
-  const ws = wb.Sheets[wb.SheetNames[0]];
+  const intents  = parseIntents(wb.Sheets[wb.SheetNames[0]]);
+  const settings = parseSettings(wb.SheetNames[1] ? wb.Sheets[wb.SheetNames[1]] : null);
+  return { intents, resp: settings.resp, keys: settings.keys };
+}
+
+function parseIntents(ws){
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
   const clean = s => String(s ?? "").replace(/\r\n/g, "\n").trim();
 
@@ -253,13 +247,34 @@ async function parseWorkbook(file){
   return intents.filter(it => it.patterns.length);
 }
 
+function parseSettings(ws){
+  const resp = { ...DEFAULT_RESP };
+  const keys = ["", "", ""];
+  if (!ws) return { resp, keys };
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+  for (const r of rows) {
+    const rawKey = String(r[0] ?? "").trim();
+    if (!rawKey) continue;
+    const key = rawKey.toUpperCase().replace(/\s+/g, "_"); // "Api Key 1" -> "API_KEY_1"
+    const val = String(r[1] ?? "").replace(/\r\n/g, "\n").trim();
+    if (key in resp) { if (val) resp[key] = val; }        // blank keeps the default
+    else if (key === "API_KEY_1") keys[0] = val;
+    else if (key === "API_KEY_2") keys[1] = val;
+    else if (key === "API_KEY_3") keys[2] = val;
+  }
+  return { resp, keys };
+}
+
 async function loadSpreadsheetFile(file){
   if (!file) return;
   const err = document.getElementById("loadError");
   err.textContent = "";
   try {
-    INTENTS = await parseWorkbook(file);
-    if (!INTENTS.length) { err.textContent = "No usable rows found — check columns A and B."; return; }
+    const parsed = await parseWorkbook(file);
+    if (!parsed.intents.length) { err.textContent = "No usable rows found — check columns A and B."; return; }
+    INTENTS = parsed.intents;
+    RESP = parsed.resp;          // response text from Sheet 2 (or defaults)
+    SHEET_KEYS = parsed.keys;    // API keys from Sheet 2
     document.getElementById("loader").remove();
     addMsg(RESP.GREETING, "edi");
     input.focus();
@@ -283,8 +298,13 @@ const loaderCard = loaderEl.querySelector(".card");
 loaderEl.addEventListener("drop", e => loadSpreadsheetFile(e.dataTransfer.files[0]));
 
 /* ===================== API KEYS ===================== */
+/* Priority: keys from Sheet 2, then any entered via the ~ developer menu. */
 function loadKeys(){ try { return JSON.parse(localStorage.getItem(KEYS_STORAGE)) || ["","",""]; } catch { return ["","",""]; } }
-function activeKeys(){ return loadKeys().filter(k => k && k.trim()); }
+function activeKeys(){
+  const sheetK = (SHEET_KEYS || []).filter(k => k && k.trim());
+  if (sheetK.length) return sheetK;
+  return loadKeys().filter(k => k && k.trim());
+}
 
 /* ===================== DEVELOPER MENU (~) ===================== */
 const dev = document.getElementById("dev");
@@ -448,7 +468,8 @@ form.addEventListener("submit", (e) => {
 });
 
 /* ===================== INIT ===================== */
-loadResponses(); // load strings in the background; greeting is shown after the file loads
+/* Nothing loads until a spreadsheet is chosen — responses, options, and API
+   keys all come from that one offline file. */
 </script>
 </body>
 </html>
