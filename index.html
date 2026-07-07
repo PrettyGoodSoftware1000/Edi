@@ -6,6 +6,7 @@
 <title>Edi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root{
     --red:#B0142E; --red-dark:#8E1025;
@@ -21,119 +22,103 @@
     -webkit-font-smoothing:antialiased;
   }
 
-  header{
-    width:100%;padding:34px 20px 20px;text-align:center;
-  }
-  header h1{
-    font-size:30px;font-weight:600;letter-spacing:-0.02em;
-  }
+  header{width:100%;padding:34px 20px 20px;text-align:center}
+  header h1{font-size:30px;font-weight:600;letter-spacing:-0.02em}
 
-  main{
-    width:100%;max-width:680px;flex:1;
-    display:flex;flex-direction:column;padding:0 18px;
-  }
+  main{width:100%;max-width:680px;flex:1;display:flex;flex-direction:column;padding:0 18px}
   #chat{
-    flex:1;overflow-y:auto;
-    display:flex;flex-direction:column;gap:14px;
-    padding:8px 2px 20px;
+    flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:8px 2px 20px;
   }
   .msg{
-    max-width:78%;
-    padding:13px 17px;
-    border-radius:20px;
-    line-height:1.5;white-space:pre-wrap;
-    font-size:15.5px;
+    max-width:78%;padding:13px 17px;border-radius:20px;
+    line-height:1.5;white-space:pre-wrap;font-size:15.5px;
     animation:rise .28s ease both;
   }
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion:reduce){.msg{animation:none}}
-  .msg.user{
-    align-self:flex-end;background:var(--red);color:#fff;
-    border-bottom-right-radius:6px;
-  }
+  .msg.user{align-self:flex-end;background:var(--red);color:#fff;border-bottom-right-radius:6px}
   .msg.edi{
     align-self:flex-start;background:var(--paper);
     border:1px solid var(--line);border-bottom-left-radius:6px;
     box-shadow:0 1px 2px rgba(29,27,25,.03);
   }
-  .chips{
-    align-self:flex-start;display:flex;flex-wrap:wrap;gap:8px;margin:2px 0;
-  }
+  .chips{align-self:flex-start;display:flex;flex-wrap:wrap;gap:8px;margin:2px 0}
   .chips button{
-    font:inherit;font-size:14px;font-weight:500;
-    color:var(--ink);background:var(--paper);
-    border:1px solid var(--line);border-radius:999px;
-    padding:8px 16px;cursor:pointer;transition:all .15s;
+    font:inherit;font-size:14px;font-weight:500;color:var(--ink);background:var(--paper);
+    border:1px solid var(--line);border-radius:999px;padding:8px 16px;cursor:pointer;transition:all .15s;
   }
-  .chips button:hover,.chips button:focus-visible{
-    border-color:var(--red);color:var(--red);outline:none;
-  }
+  .chips button:hover,.chips button:focus-visible{border-color:var(--red);color:var(--red);outline:none}
   .thinking{
-    align-self:flex-start;display:flex;gap:5px;
-    padding:15px 18px;background:var(--paper);
+    align-self:flex-start;display:flex;gap:5px;padding:15px 18px;background:var(--paper);
     border:1px solid var(--line);border-radius:20px;border-bottom-left-radius:6px;
   }
-  .thinking span{
-    width:7px;height:7px;border-radius:50%;background:var(--titanium);opacity:.35;
-    animation:beat 1s infinite;
-  }
+  .thinking span{width:7px;height:7px;border-radius:50%;background:var(--titanium);opacity:.35;animation:beat 1s infinite}
   .thinking span:nth-child(2){animation-delay:.18s}
   .thinking span:nth-child(3){animation-delay:.36s}
   @keyframes beat{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.9;transform:scale(1.2)}}
 
   form{
-    width:100%;max-width:680px;
-    display:flex;gap:10px;align-items:center;
+    width:100%;max-width:680px;display:flex;gap:10px;align-items:center;
     padding:12px 18px calc(20px + env(safe-area-inset-bottom));
-    position:sticky;bottom:0;
-    background:linear-gradient(transparent,var(--bg) 34%);
+    position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 34%);
   }
   #input{
-    flex:1;font:inherit;font-size:16px;
-    padding:14px 20px;
-    border:1px solid var(--line);border-radius:999px;
-    background:var(--paper);color:var(--ink);
+    flex:1;font:inherit;font-size:16px;padding:14px 20px;
+    border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink);
     transition:border-color .15s,box-shadow .15s;
   }
   #input.hint{color:var(--hint)}
   #input:focus{outline:none;border-color:var(--red);box-shadow:0 0 0 3px rgba(176,20,46,.10)}
   #send{
-    flex:none;width:46px;height:46px;border-radius:50%;
-    border:none;background:var(--red);cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
-    transition:background .15s;
+    flex:none;width:46px;height:46px;border-radius:50%;border:none;background:var(--red);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:background .15s;
   }
   #send:hover{background:var(--red-dark)}
   #send:focus-visible{outline:2px solid var(--red-dark);outline-offset:2px}
   #send svg{width:20px;height:20px;stroke:#fff;stroke-width:2.4;fill:none}
 
+  /* ---------- Data loader overlay ---------- */
+  #loader{
+    position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;
+    background:var(--bg);padding:20px;
+  }
+  #loader .card{
+    background:var(--paper);border:1px solid var(--line);border-radius:22px;
+    padding:40px 34px;max-width:400px;width:100%;text-align:center;
+    box-shadow:0 20px 50px rgba(29,27,25,.10);
+  }
+  #loader h2{font-size:22px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px}
+  #loader p{color:var(--titanium);font-size:14px;margin-bottom:26px}
+  #loader label{
+    display:inline-block;font-weight:600;color:#fff;background:var(--red);
+    border-radius:999px;padding:13px 30px;cursor:pointer;transition:background .15s;
+  }
+  #loader label:hover{background:var(--red-dark)}
+  #loader input[type=file]{display:none}
+  #loadError{color:var(--red);font-size:13px;margin-top:16px;min-height:1em}
+
   /* ---------- Developer menu (~) ---------- */
   #dev{
-    position:fixed;inset:0;z-index:40;display:none;
-    align-items:flex-start;justify-content:center;
-    background:rgba(29,27,25,.35);backdrop-filter:blur(3px);
-    padding:16vh 20px 20px;
+    position:fixed;inset:0;z-index:40;display:none;align-items:flex-start;justify-content:center;
+    background:rgba(29,27,25,.35);backdrop-filter:blur(3px);padding:16vh 20px 20px;
   }
   #dev.open{display:flex}
   #dev .panel{
-    background:var(--paper);border:1px solid var(--line);
-    border-radius:20px;padding:26px 26px 22px;width:100%;max-width:400px;
-    box-shadow:0 24px 60px rgba(29,27,25,.22);
+    background:var(--paper);border:1px solid var(--line);border-radius:20px;
+    padding:26px 26px 22px;width:100%;max-width:400px;box-shadow:0 24px 60px rgba(29,27,25,.22);
   }
   #dev .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:18px}
   #dev h2{font-size:17px;font-weight:600}
   #dev .ver{font-size:12px;color:var(--titanium);font-weight:500}
   #dev label{display:block;font-size:12px;font-weight:600;color:var(--titanium);margin:0 0 6px}
   #dev input{
-    width:100%;font:inherit;font-size:14px;
-    padding:11px 14px;border:1px solid var(--line);border-radius:12px;
-    background:var(--bg);color:var(--ink);margin-bottom:14px;
+    width:100%;font:inherit;font-size:14px;padding:11px 14px;border:1px solid var(--line);
+    border-radius:12px;background:var(--bg);color:var(--ink);margin-bottom:14px;
   }
   #dev input:focus{outline:none;border-color:var(--red)}
   #dev button{
-    font:inherit;font-weight:600;font-size:14px;cursor:pointer;
-    background:var(--red);color:#fff;border:none;border-radius:999px;
-    padding:11px 20px;width:100%;
+    font:inherit;font-weight:600;font-size:14px;cursor:pointer;background:var(--red);color:#fff;
+    border:none;border-radius:999px;padding:11px 20px;width:100%;
   }
   #dev button:hover{background:var(--red-dark)}
   #dev .msg-line{font-size:12.5px;margin-top:10px;min-height:1.1em}
@@ -141,7 +126,6 @@
   #dev .msg-line.ok{color:#1a7f37}
   #dev .keys{display:none}
   #dev .keys.show{display:block}
-  #dev .lock{display:block}
   #dev .lock.hide{display:none}
   #dev .hintline{font-size:12px;color:var(--titanium);margin-top:4px}
 </style>
@@ -151,13 +135,11 @@
 <div id="dev" role="dialog" aria-label="Developer menu">
   <div class="panel">
     <div class="top"><h2>Developer</h2><span class="ver">murmur v2</span></div>
-
     <div class="lock" id="lockView">
       <label for="pw">Password</label>
       <input type="password" id="pw" autocomplete="off" placeholder="Enter password">
       <button id="unlock">Unlock</button>
     </div>
-
     <div class="keys" id="keysView">
       <label for="k1">Gemini API keys</label>
       <input type="password" id="k1" autocomplete="off" placeholder="API key 1 (primary)">
@@ -165,8 +147,16 @@
       <input type="password" id="k3" autocomplete="off" placeholder="API key 3 (backup)">
       <p class="hintline">Saved in this browser. Press ~ to close.</p>
     </div>
-
     <div class="msg-line" id="devMsg"></div>
+  </div>
+</div>
+
+<div id="loader">
+  <div class="card">
+    <h2>Welcome to Edi</h2>
+    <p>Choose a spreadsheet to get started.</p>
+    <label>Choose file<input type="file" id="file" accept=".xlsx,.xls"></label>
+    <div id="loadError"></div>
   </div>
 </div>
 
@@ -205,7 +195,7 @@ let INTENTS = [];
 /* ===================== NORMALIZE ===================== */
 const normalize = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
 
-/* ===================== LOAD DATA (silent) ===================== */
+/* ===================== RESPONSES (silent load) ===================== */
 async function loadResponses(){
   try {
     const txt = await (await fetch("responses.txt", { cache: "no-store" })).text();
@@ -220,18 +210,44 @@ async function loadResponses(){
     });
   } catch (e) { console.warn("responses.txt not loaded, using defaults:", e); }
 }
-async function loadKnowledge(){
-  try {
-    const data = await (await fetch("knowledge.json", { cache: "no-store" })).json();
-    INTENTS = (data.intents || []).map((it, i) => ({
-      id: it.id || ("intent_" + (i + 1)),
-      patterns: it.patterns || [],
-      response: it.response || "",
-      options: it.options || null,
-      norm: (it.patterns || []).map(normalize)
-    }));
-  } catch (e) { console.error("knowledge.json not loaded:", e); INTENTS = []; }
+
+/* ===================== SPREADSHEET LOADING ===================== */
+/* Column A = phrasings · Column B = response (a value starts a new topic;
+   merged cells fine — value appears only in the top row) ·
+   Column C = follow-up options · Column D = per-option reply (optional) */
+async function parseWorkbook(file){
+  const wb = XLSX.read(await file.arrayBuffer());
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+  const clean = s => String(s ?? "").replace(/\r\n/g, "\n").trim();
+  const intents = []; let cur = null;
+  for (let i = 1; i < rows.length; i++) { // skip header row
+    const a = clean(rows[i][0]), b = clean(rows[i][1]), c = clean(rows[i][2]), d = clean(rows[i][3]);
+    if (b) { cur = { id: "intent_" + (intents.length + 1), patterns: [], response: b, options: [] }; intents.push(cur); }
+    if (!cur) continue;
+    if (a) cur.patterns.push(a);
+    if (c) cur.options.push({ label: c, response: d });
+  }
+  intents.forEach(it => { if (!it.options.length) it.options = null; it.norm = it.patterns.map(normalize); });
+  return intents.filter(it => it.patterns.length);
 }
+
+document.getElementById("file").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const err = document.getElementById("loadError");
+  err.textContent = "";
+  try {
+    INTENTS = await parseWorkbook(file);
+    if (!INTENTS.length) { err.textContent = "No usable rows found — check columns A and B."; return; }
+    document.getElementById("loader").remove();
+    addMsg(RESP.GREETING, "edi");
+    input.focus();
+  } catch (ex) {
+    console.error(ex);
+    err.textContent = "Couldn't read that file. Please choose a valid spreadsheet.";
+  }
+});
 
 /* ===================== API KEYS ===================== */
 function loadKeys(){ try { return JSON.parse(localStorage.getItem(KEYS_STORAGE)) || ["","",""]; } catch { return ["","",""]; } }
@@ -248,38 +264,32 @@ let unlocked = false;
 
 function openDev(){
   dev.classList.add("open");
-  if (unlocked) { keyInputs[0].focus(); } else { pw.value = ""; pw.focus(); }
+  if (unlocked) keyInputs[0].focus(); else { pw.value = ""; pw.focus(); }
   devMsg.textContent = "";
 }
 function closeDev(){ dev.classList.remove("open"); }
-
 function tryUnlock(){
   if (pw.value === DEV_PASSWORD) {
     unlocked = true;
     lockView.classList.add("hide");
     keysView.classList.add("show");
     loadKeys().forEach((v,i) => keyInputs[i].value = v);
-    devMsg.className = "msg-line";
-    devMsg.textContent = "";
+    devMsg.className = "msg-line"; devMsg.textContent = "";
     keyInputs[0].focus();
   } else {
-    devMsg.className = "msg-line err";
-    devMsg.textContent = "Incorrect password.";
+    devMsg.className = "msg-line err"; devMsg.textContent = "Incorrect password.";
     pw.value = ""; pw.focus();
   }
 }
 function saveKeys(){
   localStorage.setItem(KEYS_STORAGE, JSON.stringify(keyInputs.map(i => i.value.trim())));
-  devMsg.className = "msg-line ok";
-  devMsg.textContent = "Saved \u2713";
+  devMsg.className = "msg-line ok"; devMsg.textContent = "Saved \u2713";
   clearTimeout(saveKeys._t);
   saveKeys._t = setTimeout(() => devMsg.textContent = "", 1500);
 }
-
 document.getElementById("unlock").addEventListener("click", tryUnlock);
 pw.addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
 keyInputs.forEach(i => i.addEventListener("input", saveKeys));
-
 document.addEventListener("keydown", (e) => {
   if (e.key === "~") { e.preventDefault(); dev.classList.contains("open") ? closeDev() : openDev(); }
   else if (e.key === "Escape" && dev.classList.contains("open")) closeDev();
@@ -375,7 +385,7 @@ function serveOption(option){
 }
 
 async function handleUserText(text){
-  if (!text.trim()) return;
+  if (!text.trim() || !INTENTS.length) return;
   addMsg(text, "user");
   input.value = ""; input.classList.remove("hint");
 
@@ -402,10 +412,7 @@ form.addEventListener("submit", (e) => {
 });
 
 /* ===================== INIT ===================== */
-(async function init(){
-  await Promise.all([loadResponses(), loadKnowledge()]);
-  addMsg(RESP.GREETING, "edi");
-})();
+loadResponses(); // load strings in the background; greeting is shown after the file loads
 </script>
 </body>
 </html>
