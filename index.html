@@ -49,13 +49,21 @@
   }
   .chips button:hover,.chips button:focus-visible{border-color:var(--red);color:var(--red);outline:none}
   .thinking{
-    align-self:flex-start;display:flex;gap:5px;padding:15px 18px;background:var(--paper);
+    align-self:flex-start;display:flex;gap:5px;align-items:center;
+    padding:16px 18px;background:var(--paper);
     border:1px solid var(--line);border-radius:20px;border-bottom-left-radius:6px;
+    animation:rise .2s ease both;
   }
-  .thinking span{width:7px;height:7px;border-radius:50%;background:var(--titanium);opacity:.35;animation:beat 1s infinite}
-  .thinking span:nth-child(2){animation-delay:.18s}
-  .thinking span:nth-child(3){animation-delay:.36s}
-  @keyframes beat{0%,100%{opacity:.3;transform:scale(1)}50%{opacity:.9;transform:scale(1.2)}}
+  .thinking span{
+    width:8px;height:8px;border-radius:50%;background:#A9A5A0;
+    animation:typewave 1.2s ease-in-out infinite;
+  }
+  .thinking span:nth-child(2){animation-delay:.15s}
+  .thinking span:nth-child(3){animation-delay:.3s}
+  @keyframes typewave{
+    0%,60%,100%{transform:translateY(0);opacity:.45}
+    30%{transform:translateY(-4px);opacity:1}
+  }
 
   form{
     width:100%;max-width:680px;display:flex;gap:10px;align-items:center;
@@ -130,6 +138,26 @@
   #dev .keys.show{display:block}
   #dev .lock.hide{display:none}
   #dev .hintline{font-size:12px;color:var(--titanium);margin-top:4px}
+  #dev .switchrow{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-top:18px;padding-top:16px;border-top:1px solid var(--line);
+  }
+  #dev .switchrow .lbl{font-size:13px;font-weight:600}
+  #dev .switchrow .sub{font-size:11.5px;color:var(--titanium);font-weight:400;margin-top:2px}
+  .switch{position:relative;width:46px;height:27px;flex:none;cursor:pointer}
+  .switch input{opacity:0;width:0;height:0;position:absolute}
+  .switch .track{
+    position:absolute;inset:0;border-radius:999px;background:#D8D5D1;
+    transition:background .18s;
+  }
+  .switch .track::after{
+    content:"";position:absolute;top:2.5px;left:2.5px;width:22px;height:22px;
+    border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);
+    transition:transform .18s;
+  }
+  .switch input:checked + .track{background:var(--red)}
+  .switch input:checked + .track::after{transform:translateX(19px)}
+  .switch input:focus-visible + .track{outline:2px solid var(--red);outline-offset:2px}
 
   /* ---------- Image lightbox ---------- */
   #lightbox{
@@ -161,7 +189,7 @@
 
 <div id="dev" role="dialog" aria-label="Developer menu">
   <div class="panel">
-    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.5</span></div>
+    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.6</span></div>
     <div class="lock" id="lockView">
       <label for="pw">Password</label>
       <input type="password" id="pw" autocomplete="off" placeholder="Enter password">
@@ -173,6 +201,16 @@
       <input type="password" id="k2" autocomplete="off" placeholder="API key 2 (backup)">
       <input type="password" id="k3" autocomplete="off" placeholder="API key 3 (backup)">
       <p class="hintline">Optional override — keys in the spreadsheet take priority. Saved in this browser. Press ~ to close.</p>
+      <div class="switchrow">
+        <div>
+          <div class="lbl">Typing simulation</div>
+          <div class="sub">Show a brief ... bubble before Edi replies</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="typingToggle">
+          <span class="track"></span>
+        </label>
+      </div>
     </div>
     <div class="msg-line" id="devMsg"></div>
   </div>
@@ -213,7 +251,7 @@ const MODEL = "gemini-2.5-flash-lite";
 const DEV_PASSWORD = "cheeseburger";
 const KEYS_STORAGE = "edi_api_keys";
 const HINT_TEXT = "What can you do for me, Edi?";
-const VERSION = "murmur v2.5";
+const VERSION = "murmur v2.6";
 
 /* Built-in fallbacks used only if Sheet 2 is missing or a value is blank */
 const DEFAULT_RESP = {
@@ -343,6 +381,7 @@ async function loadSpreadsheetFile(file){
     RESP = parsed.resp;          // response text from Sheet 2 (or defaults)
     SHEET_KEYS = parsed.keys;    // API keys from Sheet 2
     document.getElementById("loader").remove();
+    await ediThinks();
     addEdiMsg(RESP.GREETING);
     input.focus();
   } catch (ex) {
@@ -410,6 +449,17 @@ function saveKeys(){
 document.getElementById("unlock").addEventListener("click", tryUnlock);
 pw.addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
 keyInputs.forEach(i => i.addEventListener("input", saveKeys));
+
+const typingToggle = document.getElementById("typingToggle");
+typingToggle.checked = localStorage.getItem("edi_typing_sim") !== "off";
+typingToggle.addEventListener("change", () => {
+  typingSim = typingToggle.checked;
+  localStorage.setItem("edi_typing_sim", typingSim ? "on" : "off");
+  devMsg.className = "msg-line ok";
+  devMsg.textContent = "Typing simulation " + (typingSim ? "on" : "off") + " \u2713";
+  clearTimeout(saveKeys._t);
+  saveKeys._t = setTimeout(() => devMsg.textContent = "", 1500);
+});
 document.addEventListener("keydown", (e) => {
   if (e.key === "~") { e.preventDefault(); dev.classList.contains("open") ? closeDev() : openDev(); }
   else if (e.key === "Escape") {
@@ -565,20 +615,36 @@ function showThinking(){
   chat.appendChild(d); chat.scrollTop = chat.scrollHeight; return d;
 }
 
+/* ---------- Typing simulation ---------- */
+/* Shows the ... bubble for 1–2s before Edi replies, like a person typing.
+   Toggle lives in the ~ developer menu; preference persists per browser. */
+const TYPING_STORAGE = "edi_typing_sim";
+let typingSim = localStorage.getItem(TYPING_STORAGE) !== "off"; // default ON
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function ediThinks(){
+  if (!typingSim) return;
+  const d = showThinking();
+  await sleep(1000 + Math.random() * 1000); // 1–2 seconds
+  d.remove();
+}
+
 // Show a topic's response, then offer its first option group (if any).
-function serveTopic(intent){
-  addEdiMsg(intent.response);
+// think=false when a thinking bubble was already shown (e.g. during an API call).
+async function serveTopic(intent, think = true){
   pending = null;
+  if (think) await ediThinks();
+  addEdiMsg(intent.response);
   if (intent.levels.length) offerOptions(intent, 0);
 }
 // Resolve a chosen option: echo it, show its reply, then advance to the next
 // option group in the SAME topic (if one exists). Works for current or old chips.
 // echo=false when the user's message was already shown (typed / AI-matched).
-function chooseOption(intent, levelIndex, option, echo = true){
+async function chooseOption(intent, levelIndex, option, echo = true, think = true){
   if (echo) addMsg(extractImages(option.label).clean || option.label, "user");
+  pending = null;
+  if (think) await ediThinks();
   const reply = option.reply?.trim() ? option.reply : RESP.DEFAULT_OPTION.replace("{label}", option.label);
   addEdiMsg(reply);
-  pending = null;
   const next = levelIndex + 1;
   if (intent.levels[next]) offerOptions(intent, next);
   input.focus();
@@ -598,24 +664,28 @@ async function handleUserText(text){
   if (!activeKeys().length) {
     const kw = keywordMatch(text);
     if (kw) { serveTopic(kw); return; }
-    addEdiMsg(RESP.NO_MATCH); return;
+    await ediThinks(); addEdiMsg(RESP.NO_MATCH); return;
   }
 
+  // Real API call: the ... bubble stays up for the whole call, and (when the
+  // simulation is on) for at least 1s so quick responses still feel typed.
+  const t0 = Date.now();
   const spinner = showThinking();
   const result = await callGemini(buildPrompt(text));
+  if (typingSim) { const left = 1000 - (Date.now() - t0); if (left > 0) await sleep(left); }
   spinner.remove();
 
   if (!result) {
     // All keys failed — fall back to keyword approximation before erroring.
     const kw = keywordMatch(text);
-    if (kw) { serveTopic(kw); return; }
+    if (kw) { serveTopic(kw, false); return; }
     addEdiMsg(RESP.API_DOWN); return;
   }
   if (result.type === "option" && pending) {
     const opt = optionInList(result.value || "", pending.options);
-    if (opt) { chooseOption(pending.intent, pending.levelIndex, opt, false); return; }
+    if (opt) { chooseOption(pending.intent, pending.levelIndex, opt, false, false); return; }
   }
-  if (result.type === "intent") { const it = INTENTS.find(i => i.id === result.value); if (it) { serveTopic(it); return; } }
+  if (result.type === "intent") { const it = INTENTS.find(i => i.id === result.value); if (it) { serveTopic(it, false); return; } }
   addEdiMsg(RESP.NO_MATCH);
 }
 
