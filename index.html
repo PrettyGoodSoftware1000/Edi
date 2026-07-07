@@ -83,10 +83,12 @@
     background:var(--bg);padding:20px;
   }
   #loader .card{
-    background:var(--paper);border:1px solid var(--line);border-radius:22px;
+    background:var(--paper);border:1.5px solid var(--line);border-radius:22px;
     padding:40px 34px;max-width:400px;width:100%;text-align:center;
     box-shadow:0 20px 50px rgba(29,27,25,.10);
+    transition:border-color .15s,background .15s;
   }
+  #loader .card.over{border-color:var(--red);border-style:dashed;background:#FDF7F8}
   #loader h2{font-size:22px;font-weight:600;letter-spacing:-0.01em;margin-bottom:8px}
   #loader p{color:var(--titanium);font-size:14px;margin-bottom:26px}
   #loader label{
@@ -134,7 +136,7 @@
 
 <div id="dev" role="dialog" aria-label="Developer menu">
   <div class="panel">
-    <div class="top"><h2>Developer</h2><span class="ver">murmur v2</span></div>
+    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.1</span></div>
     <div class="lock" id="lockView">
       <label for="pw">Password</label>
       <input type="password" id="pw" autocomplete="off" placeholder="Enter password">
@@ -181,7 +183,7 @@ const MODEL = "gemini-2.5-flash-lite";
 const DEV_PASSWORD = "cheeseburger";
 const KEYS_STORAGE = "edi_api_keys";
 const HINT_TEXT = "What can you do for me, Edi?";
-const VERSION = "murmur v2";
+const VERSION = "murmur v2.1";
 
 /* Built-in fallbacks used only if responses.txt can't be read */
 let RESP = {
@@ -220,10 +222,29 @@ async function parseWorkbook(file){
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
   const clean = s => String(s ?? "").replace(/\r\n/g, "\n").trim();
+
+  // Merged cells only store their value in the top-left cell; every other
+  // row in the merge reads back empty. Fill each merged range with its
+  // anchor value so columns B/C/D behave the way they LOOK in Excel.
+  const bContinuation = new Set(); // rows that are merge continuations in column B
+  (ws["!merges"] || []).forEach(m => {
+    const val = (rows[m.s.r] || [])[m.s.c] ?? "";
+    for (let r = m.s.r; r <= m.e.r; r++) {
+      if (!rows[r]) rows[r] = [];
+      for (let c = m.s.c; c <= m.e.c; c++) rows[r][c] = val;
+    }
+    if (m.s.c === 1) for (let r = m.s.r + 1; r <= m.e.r; r++) bContinuation.add(r);
+  });
+
   const intents = []; let cur = null;
   for (let i = 1; i < rows.length; i++) { // skip header row
     const a = clean(rows[i][0]), b = clean(rows[i][1]), c = clean(rows[i][2]), d = clean(rows[i][3]);
-    if (b) { cur = { id: "intent_" + (intents.length + 1), patterns: [], response: b, options: [] }; intents.push(cur); }
+    // A value in B starts a new topic — unless this row is just the
+    // continuation of a merged B cell from the topic above.
+    if (b && !bContinuation.has(i)) {
+      cur = { id: "intent_" + (intents.length + 1), patterns: [], response: b, options: [] };
+      intents.push(cur);
+    }
     if (!cur) continue;
     if (a) cur.patterns.push(a);
     if (c) cur.options.push({ label: c, response: d });
@@ -232,8 +253,7 @@ async function parseWorkbook(file){
   return intents.filter(it => it.patterns.length);
 }
 
-document.getElementById("file").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
+async function loadSpreadsheetFile(file){
   if (!file) return;
   const err = document.getElementById("loadError");
   err.textContent = "";
@@ -247,7 +267,20 @@ document.getElementById("file").addEventListener("change", async (e) => {
     console.error(ex);
     err.textContent = "Couldn't read that file. Please choose a valid spreadsheet.";
   }
-});
+}
+
+document.getElementById("file").addEventListener("change", e => loadSpreadsheetFile(e.target.files[0]));
+
+// Drag & drop — the whole overlay accepts a dropped file; the card highlights.
+const loaderEl = document.getElementById("loader");
+const loaderCard = loaderEl.querySelector(".card");
+["dragenter","dragover"].forEach(ev => loaderEl.addEventListener(ev, e => {
+  e.preventDefault(); loaderCard.classList.add("over");
+}));
+["dragleave","drop"].forEach(ev => loaderEl.addEventListener(ev, e => {
+  e.preventDefault(); loaderCard.classList.remove("over");
+}));
+loaderEl.addEventListener("drop", e => loadSpreadsheetFile(e.dataTransfer.files[0]));
 
 /* ===================== API KEYS ===================== */
 function loadKeys(){ try { return JSON.parse(localStorage.getItem(KEYS_STORAGE)) || ["","",""]; } catch { return ["","",""]; } }
@@ -396,7 +429,10 @@ async function handleUserText(text){
   const result = await callGemini(buildPrompt(text));
   spinner.remove();
 
-  if (!result || result.noKeys) { addMsg(RESP.API_DOWN, "edi"); pendingIntent = null; return; }
+  // No keys configured = exact-match-only mode: unknown input just gets the
+  // normal "no match" reply. API_DOWN is reserved for keys that exist but fail.
+  if (result?.noKeys) { addMsg(RESP.NO_MATCH, "edi"); pendingIntent = null; return; }
+  if (!result) { addMsg(RESP.API_DOWN, "edi"); pendingIntent = null; return; }
   if (result.type === "option" && pendingIntent) {
     const opt = pendingIntent.options.find(o => normalize(o.label) === normalize(result.value || ""));
     if (opt) { serveOption(opt); return; }
