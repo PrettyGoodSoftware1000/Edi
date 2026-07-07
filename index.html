@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Edi</title>
+<title>EdAi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -35,9 +35,9 @@
     animation:rise .28s ease both;
   }
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  @media (prefers-reduced-motion:reduce){.msg{animation:none}}
+  @mEdAia (prefers-reduced-motion:reduce){.msg{animation:none}}
   .msg.user{align-self:flex-end;background:var(--red);color:#fff;border-bottom-right-radius:6px}
-  .msg.edi{
+  .msg.EdAi{
     align-self:flex-start;background:var(--paper);
     border:1px solid var(--line);border-bottom-left-radius:6px;
     box-shadow:0 1px 2px rgba(29,27,25,.03);
@@ -155,7 +155,7 @@
 
 <div id="loader">
   <div class="card">
-    <h2>Welcome to Edi</h2>
+    <h2>Welcome to EdAi</h2>
     <p>Choose a spreadsheet to get started.</p>
     <label>Choose file<input type="file" id="file" accept=".xlsx,.xls"></label>
     <div id="loadError"></div>
@@ -163,7 +163,7 @@
 </div>
 
 <header>
-  <h1>Welcome to Edi</h1>
+  <h1>Welcome to EdAi</h1>
 </header>
 
 <main>
@@ -171,7 +171,7 @@
 </main>
 
 <form id="form" autocomplete="off">
-  <input id="input" type="text" aria-label="Message Edi">
+  <input id="input" type="text" aria-label="Message EdAi">
   <button id="send" type="submit" aria-label="Send">
     <svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
@@ -181,13 +181,13 @@
 /* ===================== CONFIG ===================== */
 const MODEL = "gemini-2.5-flash-lite";
 const DEV_PASSWORD = "cheeseburger";
-const KEYS_STORAGE = "edi_api_keys";
-const HINT_TEXT = "What can you do for me, Edi?";
+const KEYS_STORAGE = "EdAi_api_keys";
+const HINT_TEXT = "What can you do for me, EdAi?";
 const VERSION = "murmur v2.3";
 
 /* Built-in fallbacks used only if Sheet 2 is missing or a value is blank */
 const DEFAULT_RESP = {
-  GREETING: "Hi, I'm Edi. What can I help you with?",
+  GREETING: "Hi, I'm EdAi. What can I help you with?",
   NO_MATCH: "I'm not sure I can help with that one.",
   API_DOWN: "I'm having trouble answering right now. Please try again in a moment.",
   DEFAULT_OPTION: "Great choice — {label} it is!"
@@ -297,7 +297,7 @@ async function loadSpreadsheetFile(file){
     RESP = parsed.resp;          // response text from Sheet 2 (or defaults)
     SHEET_KEYS = parsed.keys;    // API keys from Sheet 2
     document.getElementById("loader").remove();
-    addMsg(RESP.GREETING, "edi");
+    addMsg(RESP.GREETING, "EdAi");
     input.focus();
   } catch (ex) {
     console.error(ex);
@@ -458,7 +458,7 @@ function showThinking(){
 
 // Show a topic's response, then offer its first option group (if any).
 function serveTopic(intent){
-  addMsg(intent.response, "edi");
+  addMsg(intent.response, "EdAi");
   pending = null;
   if (intent.levels.length) offerOptions(intent, 0);
 }
@@ -468,7 +468,7 @@ function serveTopic(intent){
 function chooseOption(intent, levelIndex, option, echo = true){
   if (echo) addMsg(option.label, "user");
   const reply = option.reply?.trim() ? option.reply : RESP.DEFAULT_OPTION.replace("{label}", option.label);
-  addMsg(reply, "edi");
+  addMsg(reply, "EdAi");
   pending = null;
   const next = levelIndex + 1;
   if (intent.levels[next]) offerOptions(intent, next);
@@ -491,14 +491,14 @@ async function handleUserText(text){
 
   // No keys configured = exact-match-only mode: unknown input just gets the
   // normal "no match" reply. API_DOWN is reserved for keys that exist but fail.
-  if (result?.noKeys) { addMsg(RESP.NO_MATCH, "edi"); return; }
-  if (!result) { addMsg(RESP.API_DOWN, "edi"); return; }
+  if (result?.noKeys) { addMsg(RESP.NO_MATCH, "EdAi"); return; }
+  if (!result) { addMsg(RESP.API_DOWN, "EdAi"); return; }
   if (result.type === "option" && pending) {
     const opt = optionInList(result.value || "", pending.options);
     if (opt) { chooseOption(pending.intent, pending.levelIndex, opt, false); return; }
   }
   if (result.type === "intent") { const it = INTENTS.find(i => i.id === result.value); if (it) { serveTopic(it); return; } }
-  addMsg(RESP.NO_MATCH, "edi");
+  addMsg(RESP.NO_MATCH, "EdAi");
 }
 
 form.addEventListener("submit", (e) => {
