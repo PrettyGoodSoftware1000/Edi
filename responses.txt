@@ -4,10 +4,10 @@
 # Lines starting with "#" are notes and are ignored.
 # {label} is replaced with whatever option the user picked.
 
-GREETING = Hi, I'm Edi. What can I help you with?
+GREETING = Hi, I'm Edi. I'm here to answer your questions about Ed______'s heart valves and this conference. If you want to know more, just say "details."
 
-NO_MATCH = I'm not sure I can help with that one.
+NO_MATCH = Let me connect you with a representative you help you out with that one.
 
-API_DOWN = I'm having trouble answering right now. Please try again in a moment.
+API_DOWN = I'm having trouble answering right now. Don't worry though, this is just a demo to explain the idea.
 
-DEFAULT_OPTION = Great choice — {label} it is!
+DEFAULT_OPTION = Sure thing, {label} it is.
