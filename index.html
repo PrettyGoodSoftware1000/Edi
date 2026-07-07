@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EdAi</title>
+<title>Edi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -35,9 +35,9 @@
     animation:rise .28s ease both;
   }
   @keyframes rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-  @mEdAia (prefers-reduced-motion:reduce){.msg{animation:none}}
+  @media (prefers-reduced-motion:reduce){.msg{animation:none}}
   .msg.user{align-self:flex-end;background:var(--red);color:#fff;border-bottom-right-radius:6px}
-  .msg.EdAi{
+  .msg.edi{
     align-self:flex-start;background:var(--paper);
     border:1px solid var(--line);border-bottom-left-radius:6px;
     box-shadow:0 1px 2px rgba(29,27,25,.03);
@@ -130,13 +130,38 @@
   #dev .keys.show{display:block}
   #dev .lock.hide{display:none}
   #dev .hintline{font-size:12px;color:var(--titanium);margin-top:4px}
+
+  /* ---------- Image lightbox ---------- */
+  #lightbox{
+    position:fixed;inset:0;z-index:50;display:none;
+    align-items:center;justify-content:center;
+    background:rgba(29,27,25,.82);backdrop-filter:blur(4px);
+    cursor:zoom-out;padding:24px;
+  }
+  #lightbox.open{display:flex}
+  #lightbox img{
+    max-width:94vw;max-height:92vh;object-fit:contain;
+    border-radius:12px;box-shadow:0 30px 80px rgba(0,0,0,.5);
+    animation:rise .22s ease both;
+  }
+  #lightbox .close{
+    position:absolute;top:18px;right:22px;
+    font-size:28px;line-height:1;color:#fff;opacity:.8;
+    background:none;border:none;cursor:pointer;font-family:inherit;
+  }
+  #lightbox .close:hover{opacity:1}
+  .msg .thumbwrap{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .msg img.thumb{
+    max-width:220px;max-height:160px;border-radius:12px;
+    cursor:zoom-in;display:block;border:1px solid var(--line);
+  }
 </style>
 </head>
 <body>
 
 <div id="dev" role="dialog" aria-label="Developer menu">
   <div class="panel">
-    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.3</span></div>
+    <div class="top"><h2>Developer</h2><span class="ver">murmur v2.5</span></div>
     <div class="lock" id="lockView">
       <label for="pw">Password</label>
       <input type="password" id="pw" autocomplete="off" placeholder="Enter password">
@@ -155,15 +180,20 @@
 
 <div id="loader">
   <div class="card">
-    <h2>Welcome to EdAi</h2>
+    <h2>Welcome to Edi</h2>
     <p>Choose a spreadsheet to get started.</p>
     <label>Choose file<input type="file" id="file" accept=".xlsx,.xls"></label>
     <div id="loadError"></div>
   </div>
 </div>
 
+<div id="lightbox" role="dialog" aria-label="Image viewer">
+  <button class="close" aria-label="Close">&times;</button>
+  <img alt="">
+</div>
+
 <header>
-  <h1>Welcome to EdAi</h1>
+  <h1>Welcome to Edi</h1>
 </header>
 
 <main>
@@ -171,7 +201,7 @@
 </main>
 
 <form id="form" autocomplete="off">
-  <input id="input" type="text" aria-label="Message EdAi">
+  <input id="input" type="text" aria-label="Message Edi">
   <button id="send" type="submit" aria-label="Send">
     <svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
@@ -181,13 +211,13 @@
 /* ===================== CONFIG ===================== */
 const MODEL = "gemini-2.5-flash-lite";
 const DEV_PASSWORD = "cheeseburger";
-const KEYS_STORAGE = "EdAi_api_keys";
-const HINT_TEXT = "What can you do for me, EdAi?";
-const VERSION = "murmur v2.3";
+const KEYS_STORAGE = "edi_api_keys";
+const HINT_TEXT = "What can you do for me, Edi?";
+const VERSION = "murmur v2.5";
 
 /* Built-in fallbacks used only if Sheet 2 is missing or a value is blank */
 const DEFAULT_RESP = {
-  GREETING: "Hi, I'm EdAi. What can I help you with?",
+  GREETING: "Hi, I'm Edi. What can I help you with?",
   NO_MATCH: "I'm not sure I can help with that one.",
   API_DOWN: "I'm having trouble answering right now. Please try again in a moment.",
   DEFAULT_OPTION: "Great choice — {label} it is!"
@@ -207,7 +237,7 @@ const normalize = (s) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replac
      Column A = setting name (GREETING, NO_MATCH, API_DOWN, DEFAULT_OPTION,
      API_KEY_1/2/3) · Column B = value. Anything else is ignored. */
 async function parseWorkbook(file){
-  const wb = XLSX.read(await file.arrayBuffer());
+  const wb = XLSX.read(await file.arrayBuffer(), { cellHTML: true });
   const intents  = parseIntents(wb.Sheets[wb.SheetNames[0]]);
   const settings = parseSettings(wb.SheetNames[1] ? wb.Sheets[wb.SheetNames[1]] : null);
   return { intents, resp: settings.resp, keys: settings.keys };
@@ -241,14 +271,29 @@ function parseIntents(ws){
   // is that option's reply. Each option group becomes one "level"; after the
   // user answers a level, the next non-empty level's options are offered.
   const intents = []; let cur = null;
+  const decode = s => s.replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&quot;/g,'"').replace(/&#39;/g,"'");
   for (let i = 1; i < rows.length; i++) { // skip header row
     const a = clean(rows[i][0]), b = clean(rows[i][1]);
     if (b && !bContinuation.has(i)) {
-      cur = { id: "intent_" + (intents.length + 1), patterns: [], response: b, levelsByCol: {} };
+      cur = { id: "intent_" + (intents.length + 1), patterns: [], response: b, levelsByCol: {}, keywords: new Set() };
       intents.push(cur);
     }
     if (!cur) continue;
-    if (a) cur.patterns.push(a);
+    if (a) {
+      cur.patterns.push(a);
+      // Keywords: words BOLDED inside the cell (partial bold only — whole-cell
+      // bold isn't stored in a readable way) and/or wrapped in *asterisks*.
+      const rawCell = ws[XLSX.utils.encode_cell({ r: i, c: 0 })];
+      const html = rawCell?.h || "";
+      for (const m of html.matchAll(/<(?:b|strong)>(.*?)<\/(?:b|strong)>/gi)) {
+        const kw = normalize(decode(m[1].replace(/<[^>]*>/g, "")));
+        if (kw) cur.keywords.add(kw);
+      }
+      for (const m of a.matchAll(/\*([^*]+)\*/g)) {
+        const kw = normalize(m[1]);
+        if (kw) cur.keywords.add(kw);
+      }
+    }
     for (let c = 2; c <= lastCol; c += 2) {          // every option-input column
       const label = clean(rows[i][c]);
       if (!label) continue;
@@ -264,6 +309,7 @@ function parseIntents(ws){
                       .map(c => it.levelsByCol[c]);
     delete it.levelsByCol;
     it.norm = it.patterns.map(normalize);
+    it.keywords = [...it.keywords];
   });
   return intents.filter(it => it.patterns.length);
 }
@@ -297,7 +343,7 @@ async function loadSpreadsheetFile(file){
     RESP = parsed.resp;          // response text from Sheet 2 (or defaults)
     SHEET_KEYS = parsed.keys;    // API keys from Sheet 2
     document.getElementById("loader").remove();
-    addMsg(RESP.GREETING, "EdAi");
+    addEdiMsg(RESP.GREETING);
     input.focus();
   } catch (ex) {
     console.error(ex);
@@ -366,7 +412,10 @@ pw.addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
 keyInputs.forEach(i => i.addEventListener("input", saveKeys));
 document.addEventListener("keydown", (e) => {
   if (e.key === "~") { e.preventDefault(); dev.classList.contains("open") ? closeDev() : openDev(); }
-  else if (e.key === "Escape" && dev.classList.contains("open")) closeDev();
+  else if (e.key === "Escape") {
+    if (lightbox.classList.contains("open")) closeLightbox();
+    else if (dev.classList.contains("open")) closeDev();
+  }
 });
 dev.addEventListener("click", e => { if (e.target === dev) closeDev(); });
 
@@ -423,6 +472,20 @@ let pending = null;
 function exactIntentMatch(text){ const n = normalize(text); return INTENTS.find(it => it.norm.includes(n)) || null; }
 function optionInList(text, options){ const n = normalize(text); return options.find(o => normalize(o.label) === n) || null; }
 
+// Offline approximate match: score each topic by how many of its marked
+// keywords (bolded words / *asterisked* words in column A) appear as whole
+// words in the input. Highest score wins; ties go to the earlier topic.
+function keywordMatch(text){
+  const hay = " " + normalize(text) + " ";
+  let best = null, bestScore = 0;
+  for (const it of INTENTS) {
+    let score = 0;
+    for (const kw of it.keywords) if (hay.includes(" " + kw + " ")) score++;
+    if (score > bestScore) { bestScore = score; best = it; }
+  }
+  return best;
+}
+
 /* ===================== CHAT UI ===================== */
 const chat = document.getElementById("chat");
 const form = document.getElementById("form");
@@ -436,11 +499,57 @@ function addMsg(text, who){
   const d = document.createElement("div"); d.className = "msg " + who; d.textContent = text;
   chat.appendChild(d); chat.scrollTop = chat.scrollHeight; return d;
 }
+
+/* ---------- Images: any cell may contain [image: url] ---------- */
+const IMG_RE = /\[image:\s*([^\]]+?)\s*\]/gi;
+// [image: ...] accepts three forms:
+//   full URL        [image: https://example.com/pic.png]  → used as-is
+//   bare domain     [image: www.example.com/pic.png]      → https:// added
+//   relative path   [image: images/pic.png] or [image: pic.png] → resolved against the site root
+const IMG_EXT = /\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i;
+const toUrl = u => /^https?:\/\//i.test(u) ? u
+                 : (!u.includes("/") && IMG_EXT.test(u)) ? u          // bare filename → relative
+                 : /^[\w-]+(\.[\w-]+)+(\/|$)/.test(u) ? "https://" + u // bare domain
+                 : u;                                                  // relative path
+function extractImages(text){
+  const urls = [];
+  const clean = String(text).replace(IMG_RE, (_, u) => { urls.push(toUrl(u)); return ""; })
+                            .replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { clean, urls };
+}
+
+const lightbox = document.getElementById("lightbox");
+const lightboxImg = lightbox.querySelector("img");
+function openLightbox(url){ lightboxImg.src = url; lightbox.classList.add("open"); }
+function closeLightbox(){ lightbox.classList.remove("open"); lightboxImg.src = ""; }
+lightbox.addEventListener("click", closeLightbox);
+
+// Every Edi-side message goes through here: image tags are stripped from the
+// text, shown as tap-to-zoom thumbnails in the bubble, and the first image
+// auto-opens in a screen-fitting lightbox.
+function addEdiMsg(text){
+  const { clean, urls } = extractImages(text);
+  const d = addMsg(clean || (urls.length ? "" : text), "edi");
+  if (urls.length) {
+    const wrap = document.createElement("div"); wrap.className = "thumbwrap";
+    urls.forEach(u => {
+      const img = document.createElement("img");
+      img.className = "thumb"; img.src = u; img.alt = "";
+      img.addEventListener("click", () => openLightbox(u));
+      img.addEventListener("error", () => img.remove());
+      wrap.appendChild(img);
+    });
+    d.appendChild(wrap);
+    chat.scrollTop = chat.scrollHeight;
+    openLightbox(urls[0]);
+  }
+  return d;
+}
 function offerOptions(intent, levelIndex){
   const options = intent.levels[levelIndex];
   const wrap = document.createElement("div"); wrap.className = "chips";
   options.forEach(o => {
-    const b = document.createElement("button"); b.type = "button"; b.textContent = o.label;
+    const b = document.createElement("button"); b.type = "button"; b.textContent = extractImages(o.label).clean || o.label;
     // The button remembers exactly which option it is, so clicking an OLD
     // chip from earlier in the chat still resolves correctly and moves on —
     // it never falls through to the "no match" path.
@@ -458,7 +567,7 @@ function showThinking(){
 
 // Show a topic's response, then offer its first option group (if any).
 function serveTopic(intent){
-  addMsg(intent.response, "EdAi");
+  addEdiMsg(intent.response);
   pending = null;
   if (intent.levels.length) offerOptions(intent, 0);
 }
@@ -466,9 +575,9 @@ function serveTopic(intent){
 // option group in the SAME topic (if one exists). Works for current or old chips.
 // echo=false when the user's message was already shown (typed / AI-matched).
 function chooseOption(intent, levelIndex, option, echo = true){
-  if (echo) addMsg(option.label, "user");
+  if (echo) addMsg(extractImages(option.label).clean || option.label, "user");
   const reply = option.reply?.trim() ? option.reply : RESP.DEFAULT_OPTION.replace("{label}", option.label);
-  addMsg(reply, "EdAi");
+  addEdiMsg(reply);
   pending = null;
   const next = levelIndex + 1;
   if (intent.levels[next]) offerOptions(intent, next);
@@ -485,20 +594,29 @@ async function handleUserText(text){
   // Typed a top-level phrasing → jump to that topic
   const exact = exactIntentMatch(text); if (exact) { serveTopic(exact); return; }
 
+  // No API keys → offline mode: try keyword approximation, then give up politely.
+  if (!activeKeys().length) {
+    const kw = keywordMatch(text);
+    if (kw) { serveTopic(kw); return; }
+    addEdiMsg(RESP.NO_MATCH); return;
+  }
+
   const spinner = showThinking();
   const result = await callGemini(buildPrompt(text));
   spinner.remove();
 
-  // No keys configured = exact-match-only mode: unknown input just gets the
-  // normal "no match" reply. API_DOWN is reserved for keys that exist but fail.
-  if (result?.noKeys) { addMsg(RESP.NO_MATCH, "EdAi"); return; }
-  if (!result) { addMsg(RESP.API_DOWN, "EdAi"); return; }
+  if (!result) {
+    // All keys failed — fall back to keyword approximation before erroring.
+    const kw = keywordMatch(text);
+    if (kw) { serveTopic(kw); return; }
+    addEdiMsg(RESP.API_DOWN); return;
+  }
   if (result.type === "option" && pending) {
     const opt = optionInList(result.value || "", pending.options);
     if (opt) { chooseOption(pending.intent, pending.levelIndex, opt, false); return; }
   }
   if (result.type === "intent") { const it = INTENTS.find(i => i.id === result.value); if (it) { serveTopic(it); return; } }
-  addMsg(RESP.NO_MATCH, "EdAi");
+  addEdiMsg(RESP.NO_MATCH);
 }
 
 form.addEventListener("submit", (e) => {
