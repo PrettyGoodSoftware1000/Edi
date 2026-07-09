@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Edi</title>
+<title>EdAi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -183,6 +183,19 @@
     max-width:220px;max-height:160px;border-radius:12px;
     cursor:zoom-in;display:block;border:1px solid var(--line);
   }
+
+  /* ---------- Fancy mode video stage ---------- */
+  #fancyStage{
+    display:none;width:100%;max-width:680px;flex:1;
+    align-items:center;justify-content:center;padding:8px 18px 20px;
+  }
+  body.fancy main{display:none}
+  body.fancy #fancyStage{display:flex}
+  #fancyVideo{
+    aspect-ratio:9/16;height:min(70vh,560px);max-width:100%;
+    border-radius:18px;background:#000;object-fit:cover;
+    box-shadow:0 12px 40px rgba(29,27,25,.18);
+  }
 </style>
 </head>
 <body>
@@ -204,7 +217,7 @@
       <div class="switchrow">
         <div>
           <div class="lbl">Typing simulation</div>
-          <div class="sub">Show a brief ... bubble before Edi replies</div>
+          <div class="sub">Show a brief ... bubble before EdAi replies</div>
         </div>
         <label class="switch">
           <input type="checkbox" id="typingToggle">
@@ -218,7 +231,7 @@
 
 <div id="loader">
   <div class="card">
-    <h2>Welcome to Edi</h2>
+    <h2>Welcome to EdAi</h2>
     <p>Choose a spreadsheet to get started.</p>
     <label>Choose file<input type="file" id="file" accept=".xlsx,.xls"></label>
     <div id="loadError"></div>
@@ -231,15 +244,19 @@
 </div>
 
 <header>
-  <h1>Welcome to Edi</h1>
+  <h1>Welcome to EdAi</h1>
 </header>
 
 <main>
   <div id="chat" aria-live="polite"></div>
 </main>
 
+<div id="fancyStage">
+  <video id="fancyVideo" playsinline></video>
+</div>
+
 <form id="form" autocomplete="off">
-  <input id="input" type="text" aria-label="Message Edi">
+  <input id="input" type="text" aria-label="Message EdAi">
   <button id="send" type="submit" aria-label="Send">
     <svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>
   </button>
@@ -250,12 +267,12 @@
 const MODEL = "gemini-2.5-flash-lite";
 const DEV_PASSWORD = "cheeseburger";
 const KEYS_STORAGE = "edi_api_keys";
-const HINT_TEXT = "What can you do for me, Edi?";
+const HINT_TEXT = "What can you do for me, EdAi?";
 const VERSION = "murmur v2.6";
 
 /* Built-in fallbacks used only if Sheet 2 is missing or a value is blank */
 const DEFAULT_RESP = {
-  GREETING: "Hi, I'm Edi. What can I help you with?",
+  GREETING: "Hi, I'm EdAi. What can I help you with?",
   NO_MATCH: "I'm not sure I can help with that one.",
   API_DOWN: "I'm having trouble answering right now. Please try again in a moment.",
   DEFAULT_OPTION: "Great choice — {label} it is!"
@@ -381,8 +398,7 @@ async function loadSpreadsheetFile(file){
     RESP = parsed.resp;          // response text from Sheet 2 (or defaults)
     SHEET_KEYS = parsed.keys;    // API keys from Sheet 2
     document.getElementById("loader").remove();
-    await ediThinks();
-    addEdiMsg(RESP.GREETING);
+    addEdiMsg(RESP.GREETING);   // first message shows immediately — no ... delay
     input.focus();
   } catch (ex) {
     console.error(ex);
@@ -540,6 +556,7 @@ function keywordMatch(text){
 const chat = document.getElementById("chat");
 const form = document.getElementById("form");
 const input = document.getElementById("input");
+const fancyVideo = document.getElementById("fancyVideo");
 
 input.value = HINT_TEXT; input.classList.add("hint");
 input.addEventListener("focus", () => { if (input.classList.contains("hint")) { input.value = ""; input.classList.remove("hint"); } });
@@ -574,7 +591,7 @@ function openLightbox(url){ lightboxImg.src = url; lightbox.classList.add("open"
 function closeLightbox(){ lightbox.classList.remove("open"); lightboxImg.src = ""; }
 lightbox.addEventListener("click", closeLightbox);
 
-// Every Edi-side message goes through here: image tags are stripped from the
+// Every EdAi-side message goes through here: image tags are stripped from the
 // text, shown as tap-to-zoom thumbnails in the bubble, and the first image
 // auto-opens in a screen-fitting lightbox.
 function addEdiMsg(text){
@@ -616,7 +633,7 @@ function showThinking(){
 }
 
 /* ---------- Typing simulation ---------- */
-/* Shows the ... bubble for 1–2s before Edi replies, like a person typing.
+/* Shows the ... bubble for 1–2s before EdAi replies, like a person typing.
    Toggle lives in the ~ developer menu; preference persists per browser. */
 const TYPING_STORAGE = "edi_typing_sim";
 let typingSim = localStorage.getItem(TYPING_STORAGE) !== "off"; // default ON
@@ -650,8 +667,58 @@ async function chooseOption(intent, levelIndex, option, echo = true, think = tru
   input.focus();
 }
 
+/* ---------- Fancy mode ---------- */
+/* "fancy" / "fancy mode": clear the conversation and show welcome.mp4 (9:16)
+   above the input, preloading coffee.mp4. The next thing typed swaps in and
+   plays coffee.mp4. "normal" / "normal mode" restores the default chat view. */
+let fancyMode = null;            // null | "welcome" | "coffee"
+let coffeePreloaded = false;
+function preloadCoffee(){
+  if (coffeePreloaded) return;
+  coffeePreloaded = true;
+  const v = document.createElement("video");
+  v.src = "coffee.mp4"; v.preload = "auto"; v.muted = true; v.style.display = "none";
+  document.body.appendChild(v);
+  v.load();
+}
+function playVideo(src){
+  fancyVideo.src = src; fancyVideo.load();
+  fancyVideo.play().catch(() => {});
+}
+function enterFancyMode(){
+  chat.innerHTML = "";           // clear all existing conversation
+  pending = null;
+  fancyMode = "welcome";
+  document.body.classList.add("fancy");
+  playVideo("welcome.mp4");
+  preloadCoffee();
+  input.focus();
+}
+function playCoffee(){
+  if (fancyMode === "coffee") { fancyVideo.currentTime = 0; fancyVideo.play().catch(() => {}); }
+  else { fancyMode = "coffee"; playVideo("coffee.mp4"); }
+  input.focus();
+}
+function exitFancyMode(){
+  fancyMode = null;
+  document.body.classList.remove("fancy");
+  fancyVideo.pause(); fancyVideo.removeAttribute("src"); fancyVideo.load();
+  chat.innerHTML = "";
+  pending = null;
+  addEdiMsg(RESP.GREETING);       // back to the default state, spreadsheet still loaded
+  input.focus();
+}
+
 async function handleUserText(text){
   if (!text.trim() || !INTENTS.length) return;
+
+  // Fancy / normal mode commands take priority and work from any state.
+  const cmd = normalize(text);
+  if (cmd === "fancy" || cmd === "fancy mode") { input.value = ""; input.classList.remove("hint"); enterFancyMode(); return; }
+  if (cmd === "normal" || cmd === "normal mode") { input.value = ""; input.classList.remove("hint"); exitFancyMode(); return; }
+  // While fancy mode is showing, anything else typed plays coffee.mp4.
+  if (fancyMode) { input.value = ""; input.classList.remove("hint"); playCoffee(); return; }
+
   addMsg(text, "user");
   input.value = ""; input.classList.remove("hint");
 
